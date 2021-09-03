@@ -218,8 +218,8 @@ class GridMDP():
         ax = fig.axes[0]
 
         # Major ticks
-        ax.set_xticks(np.arange(0, n_cols, 1))
-        ax.set_yticks(np.arange(0, n_rows, 1))
+        ax.set_xticks(np.arange(0, n_cols+1, 1))
+        ax.set_yticks(np.arange(0, n_rows+1, 1))
 
         # Labels for major ticks
         ax.set_xticklabels(np.arange(n_cols+1), fontsize=fontsize)
