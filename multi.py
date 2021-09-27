@@ -21,10 +21,10 @@ class MultiControlSynthesis:
         self.mdp = mdp
 
     # TODO adapt this for 2 agents make sure to specify starting locations
-    def ind_qlearning(self, start=None, T=None, K=None):
+    def ind_qlearning(self, start=None, T=1000, K=100000):
 
         for i in range(self.nagents):
-            self.Q[i] = self.agent_control[i].q_learning(start=self.starts[i], T=1000, K=100000)
+            self.Q[i] = self.agent_control[i].q_learning(start=self.starts[i], T=T, K=K)
 
     def combined_qlearning(self, T=None, K=None):
         """Performs the Q-learning algorithm for 2 agents while triggering events and returns the action values.
@@ -103,7 +103,7 @@ class MultiControlSynthesis:
         self.agent_control[i].plot(iq=(0,2),policy=np.argmax(self.Q[i], axis=4), value=np.max(self.Q[i],axis=4))
 
     # TODO for multi agent
-    def simulate(self, policy, start=None, T=None, qlearning=True, plot=True, animation=None):
+    def simulate(self, policy, agents, mdp2 =None, start=None, T=None, use_mdp2 =False, qlearning=True, plot=True, animation=None):
         """Simulates the environment for multiple agents and returns a trajectory obtained under the given policy.
 
             Parameters
@@ -129,30 +129,48 @@ class MultiControlSynthesis:
                 A sequence of states
 
             """
-        T = T if T else np.prod(self.shape[:-1])
-
+        T = T if T else 50
+        print(T)
         state = []
+
         for i in range(self.nagents):
-            state.append((self.shape[1] - 1, self.agent_control[i].oa.q0)
-                         + (start if start else self.agent_control[i].random_state()))
+            state.append((self.shape[1]-1,agents[i].oa.q0)+self.starts[i])
+
         episode = [state]
+        print('e', episode)
 
         for t in range(T):
+            next_state = []
             for i in range(self.nagents):
                 if qlearning:
-                    states, probs = self.agent_control[i].transition_probs[state[i]][np.argmax(policy[state])]
+                    # print(f'agent {i}', policy[i][state[i]])
+                    states, probs = agents[i].transition_probs[state[i]][policy[i][state[i]]]
                 else:
-                    states, probs = self.agent_control[i].transition_probs[state[i]][policy[state]]
-                state[i] = states[np.random.choice(len(states), p=probs)]
-            episode.append(state)
+                    states, probs = agents[i].transition_probs[state[i]][policy[i][state[i]]]
+                #print('next:',states[np.random.choice(len(states), p=probs)])
+                next_state.append(states[np.random.choice(len(states), p=probs)])
+            episode.append(next_state)
+            state = next_state
 
-        if plot:
-            def plot_agent(i,t):
-                self.agent_control[i].mdp.plot(policy=policy[episode[t][:2]], agent=episode[t][2:])
+            # if plot:
+            #     def plot_agent(t, i=0):
+            #         if use_mdp2:
+            #             print('e', episode[t][i][0][:2],'policy',self.Q[i][episode[t][i][0][:2]].shape, '\n agent',episode[t][i][0][2:], 'bla')
+            #             mdp2.plot(policy=self.Q[i][episode[t][i][0][:2]], agent=episode[t][i][0][2:])
+            #         else:
+            #             self.agent_control[i].mdp.plot(policy=self.Q[i][episode[t][i][0][:2]], agent=episode[t][i][0][2:])
 
-            for i in range(self.nagents):
-                t = IntSlider(value=0, min=0, max=T - 1)
-                interact(plot_agent, i=i, t=t)
+            #     plot_agent(t=t)
+            #print(episode[t][0][:2])
+        if animation:
+            pad=5
+            if not os.path.exists(animation):
+                os.makedirs(animation)
+            for t in range(T):
+                print(t, ': ', episode[t][0][2:], '\t', episode[t][1][2:])
+                mdp2.multi_plot(nagents=self.nagents, policy=[policy[0][episode[t][0][:2]], policy[1][episode[t][1][:2]]],
+                    agent=[episode[t][0][2:], episode[t][1][2:]],save=animation+os.sep+str(t).zfill(pad)+'_comb.png')
+                plt.close()
 
         return episode
 

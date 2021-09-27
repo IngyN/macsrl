@@ -175,7 +175,7 @@ class GridMDP():
 
         return states, probs
     
-    def plot(self, value=None, policy=None, agent=None, save=None, hidden=[], path={}):
+    def plot(self, diff_agent=False,value=None, policy=None, agent=None, save=None, hidden=[], path={}):
         """Plots the values of the states as a color matrix.
         
         Parameters
@@ -218,12 +218,12 @@ class GridMDP():
         ax = fig.axes[0]
 
         # Major ticks
-        ax.set_xticks(np.arange(0, n_cols+1, 1))
-        ax.set_yticks(np.arange(0, n_rows+1, 1))
+        ax.set_xticks(np.arange(0, n_cols, 1))
+        ax.set_yticks(np.arange(0, n_rows, 1))
 
-        # Labels for major ticks
-        ax.set_xticklabels(np.arange(n_cols+1), fontsize=fontsize)
-        ax.set_yticklabels(np.arange(n_rows+1), fontsize=fontsize)
+        # # Labels for major ticks
+        # ax.set_xticklabels(np.arange(n_cols+1), fontsize=fontsize)
+        # ax.set_yticklabels(np.arange(n_rows+1), fontsize=fontsize)
 
         # Minor ticks
         ax.set_xticks(np.arange(-.5, n_cols, 1), minor=True)
@@ -243,10 +243,15 @@ class GridMDP():
         ax.tick_params(bottom='off', left='off')
         
         # Draw the agent
-        if agent:  
-            circle=plt.Circle((agent[1],agent[0]-0.17),0.26,color='lightblue',ec='purple',lw=2)
-            plt.gcf().gca().add_artist(circle)
-        
+        if agent: 
+            if diff_agent:
+                # print('diff true')
+                circle=plt.Circle((agent[1],agent[0]-0.17),0.26,color='lightgreen',ec='orange',lw=4)
+                plt.gcf().gca().add_artist(circle)
+            else:
+                circle=plt.Circle((agent[1],agent[0]-0.17),0.26,color='lightblue',ec='purple',lw=2)
+                plt.gcf().gca().add_artist(circle)
+
         for i, j in self.states():  # For all states
             if (i,j) in path:
                 if 'u' in path[i,j]:
@@ -344,3 +349,160 @@ class GridMDP():
         
         interact(plot_value,t=w)
 
+    def multi_plot(self, nagents, value=None, policy=None, agent=None, save=None, animation= None, hidden=[], path={}):
+        """Plots the values of the states as a color matrix.
+            
+        Parameters
+        ----------
+        value : array, shape=(n_mdps,n_qs,n_rows,n_cols) 
+            The value function. If it is None, the reward function will be plotted.
+            
+        policy : array, shape=(n_mdps,n_qs,n_rows,n_cols) 
+            The policy to be visualized. It is optional.
+            
+        agent : tuple
+            The position of the agent to be plotted. It is optional.
+        
+        save : str
+            The name of the file the image will be saved to. It is optional
+        """
+        
+        f=FontProperties(weight='bold')
+        fontname = 'Times New Roman'
+        fontsize = 20
+
+        if value is None:
+            value = self.reward
+        else:
+            value = np.copy(value)
+            for h in hidden:
+                value[h] = 0
+        
+        # Dimensions
+        n_rows, n_cols = self.shape
+        
+        # Plot
+        fig = plt.figure(figsize=(self.figsize,self.figsize))
+        plt.rc('text', usetex=True)
+        threshold = np.nanmax(np.abs(value))*2
+        threshold = 1 if threshold==0 else threshold 
+        plt.imshow(value, interpolation='nearest', cmap=self.cmap, vmax=threshold, vmin=-threshold)
+        
+        # Get the axes
+        ax = fig.axes[0]
+
+        # Major ticks
+        ax.set_xticks(np.arange(0, n_cols, 1))
+        ax.set_yticks(np.arange(0, n_rows, 1))
+
+        # # Labels for major ticks
+        # ax.set_xticklabels(np.arange(n_cols+1), fontsize=fontsize)
+        # ax.set_yticklabels(np.arange(n_rows+1), fontsize=fontsize)
+
+        # Minor ticks
+        ax.set_xticks(np.arange(-.5, n_cols, 1), minor=True)
+        ax.set_yticks(np.arange(-.5, n_rows, 1), minor=True)
+        
+        # Move x axis to the top
+        ax.xaxis.tick_top()
+    
+        # Gridlines based on minor ticks
+        ax.grid(which='minor', color='lightgray', linestyle='-', linewidth=1,alpha=0.5)
+
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        
+        ax.tick_params(bottom='off', left='off')
+        
+        # Draw the agents
+        for i in range(nagents):
+            if agent: 
+                if i==0:
+                    # print('diff true')
+                    circle=plt.Circle((agent[i][1],agent[i][0]-0.17),0.26,color='lightgreen',ec='orange',lw=4)
+                    plt.gcf().gca().add_artist(circle)
+                else:
+                    circle=plt.Circle((agent[i][1],agent[i][0]-0.17),0.26,color='lightblue',ec='purple',lw=2)
+                    plt.gcf().gca().add_artist(circle)
+
+        for i, j in self.states():  # For all states
+            if (i,j) in path:
+                if 'u' in path[i,j]:
+                    rect=plt.Rectangle((j-0.4,i+0.4),+0.8,-0.9,color='lightcoral')
+                    plt.gcf().gca().add_artist(rect)
+                if 'd' in path[i,j]:
+                    rect=plt.Rectangle((j-0.4,i-0.4),+0.8,+0.9,color='lightcoral')
+                    plt.gcf().gca().add_artist(rect)
+                if 'r' in path[i,j]:
+                    rect=plt.Rectangle((j-0.4,i-0.4),+0.9,+0.8,color='lightcoral')
+                    plt.gcf().gca().add_artist(rect)
+                if 'l' in path[i,j]:
+                    rect=plt.Rectangle((j+0.4,i-0.4),-0.9,+0.8,color='lightcoral')
+                    plt.gcf().gca().add_artist(rect)
+                    
+            cell_type = self.structure[i,j]
+            # If there is an obstacle
+            if cell_type == 'B':
+                circle=plt.Circle((j,i),0.49,color='k',fc='darkgray')
+                plt.gcf().gca().add_artist(circle)
+                continue
+            # If it is a trap cell
+            elif cell_type == 'T':
+                circle=plt.Circle((j,i),0.49,color='k',fill=False)
+                plt.gcf().gca().add_artist(circle)
+                
+            # If it is a directional cell (See the description of the class attribute 'structure' for details)
+            elif cell_type == 'U':
+                triangle = plt.Polygon([[j,i],[j-0.5,i+0.5],[j+0.5,i+0.5]], color='gray')
+                plt.gca().add_patch(triangle)
+            elif cell_type == 'D':
+                triangle = plt.Polygon([[j,i],[j-0.5,i-0.5],[j+0.5,i-0.5]], color='gray')
+                plt.gca().add_patch(triangle)
+            elif cell_type == 'R':
+                triangle = plt.Polygon([[j,i],[j-0.5,i+0.5],[j-0.5,i-0.5]], color='gray')
+                plt.gca().add_patch(triangle)
+            elif cell_type == 'L':
+                triangle = plt.Polygon([[j,i],[j+0.5,i+0.5],[j+0.5,i-0.5]], color='gray')
+                plt.gca().add_patch(triangle)
+            
+            # If the background is too dark, make the text white
+            color = 'white' if np.abs(value[i, j]) > threshold/2 else 'black'
+            
+
+            if policy is None:  # Print the values       
+                v = str(int(round(100*value[i,j]))).zfill(3)
+                plt.text(j, i, '$'+v[0]+'.'+v[1:]+'$',horizontalalignment='center',color=color,fontname=fontname,fontsize=fontsize+2)  # Value
+                
+            # Draw the arrows to visualize the policy
+            else:
+                # print(policy)
+                for k in range(nagents):
+                    p = policy[k]
+                    # print(p)
+                    if value[i,j] > 0 or value is self.reward:  
+                        if p[i,j] >= len(self.A):
+                            plt.text(j, i-0.05,r'$\epsilon_'+str(p[i,j]-len(self.A))+'$', horizontalalignment='center',color=color,fontsize=fontsize+5)
+                        else:
+                            action_name = self.A[p[i,j]]
+                            if action_name == 'U':
+                                plt.arrow(j,i-0.15*k,0,-0.12,head_width=.16,head_length=.12,color=color)
+                            elif action_name == 'D':
+                                plt.arrow(j,i-.24-0.15*k,0,0.12,head_width=.16,head_length=.12,color=color)
+                            elif action_name == 'R':
+                                plt.arrow(j-.12,i-0.12-0.15*k,0.12,0,head_width=.16,head_length=.12,color=color)
+                            elif action_name == 'L':
+                                plt.arrow(j+.12,i-0.12-0.15*k,-0.12,0,head_width=.16,head_length=.12,color=color)
+            
+            # Plot the labels
+            surplus = 0.2 if (i,j) in hidden else 0
+            if self.label[i,j] in self.lcmap:
+                circle=plt.Circle((j, i+0.24-surplus),0.2+surplus/2,color=self.lcmap[self.label[i,j]])
+                plt.gcf().gca().add_artist(circle)
+            if self.label[i,j]:
+                plt.text(j, i+0.4-surplus,'$'+','.join(self.label[i,j])+'$',horizontalalignment='center',color=color,fontproperties=f,fontname=fontname,fontsize=fontsize+5+surplus*10)
+            
+        if save:
+            plt.savefig(save,bbox_inches='tight')
+        

@@ -94,7 +94,7 @@ class ControlSynthesis:
         """
         n_mdps, n_qs, n_rows, n_cols, n_actions = self.shape
         mdp_state = np.random.randint(n_rows),np.random.randint(n_cols)
-        return (np.random.randint(n_pairs),np.random.randint(n_qs)) + mdp_state
+        return (np.random.randint(n_mdps),np.random.randint(n_qs)) + mdp_state
     
     def q_learning(self,start=None,T=None,K=None):
         """Performs the Q-learning algorithm and returns the action values.
