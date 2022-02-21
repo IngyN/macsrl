@@ -44,7 +44,7 @@ class ControlSynthesis:
         The discount factor applied to B states.
     
     """
-    def __init__(self, mdp, oa, discount=0.99999, discountB=0.99):
+    def __init__(self, mdp, oa, discount=0.999, discountB=0.99):
         self.mdp = mdp
         self.oa = oa
         self.discount = discount
@@ -58,6 +58,7 @@ class ControlSynthesis:
         
         # Create the reward matrix
         self.reward = np.zeros(self.shape[:-1])
+
         for i,q,r,c in self.states():
             self.reward[i,q,r,c] = 1-self.discountB if oa.acc[q][mdp.label[r,c]][i] else 0
         

@@ -87,7 +87,7 @@ class GridMDP():
         self.structure = structure if structure is not None else np.full(shape,'E')
         self.reward = reward if reward is not None else np.zeros((n_rows,n_cols))
         self.label = label if label is not None else np.empty(shape,dtype=np.object); self.label.fill(()) if label is None else None
-        
+        self.all_labels = [j for i in label for j in i if j ]
         self.p = p
         self.A = A
         
@@ -167,7 +167,7 @@ class GridMDP():
             states.append((state[0],state[1]+1))
             probs.append(self.p if action_name=='R' else (1-self.p)/2)
         
-        # If the agent cannot move in some of the directions
+        # If the agent cannot move in some of the directions 
         probs_sum = np.sum(probs)
         if probs_sum<1:
             states.append(state)

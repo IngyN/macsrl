@@ -50,9 +50,9 @@ class OmegaAutomaton:
         The type of the OA to be constructed. The default value is 'ldba'
         
     """
-    def __init__(self,ltl,oa_type='ldba'):
+    def __init__(self,ltl,extra_aps=None, oa_type='ldba'):
         self.oa_type = oa_type
-        q0, delta, acc, eps, shape, spot_oa = self.ltl2oa(ltl)
+        q0, delta, acc, eps, shape, spot_oa = self.ltl2oa(ltl, extra_aps)
         self.q0 = q0
         self.delta = delta
         self.acc = acc
@@ -61,7 +61,7 @@ class OmegaAutomaton:
         self.eps = eps
 
 
-    def ltl2oa(self,ltl):
+    def ltl2oa(self,ltl,extra_aps):
         """Constructs and returns dictionaries and lists containing the specifications of an OA obtained by translation from the ltl property.
         It parses the output of ltl2ldba or ltl2dra for the ltl formula and creates a objects that store the specification of the OA.
 
@@ -95,12 +95,22 @@ class OmegaAutomaton:
                 q0 = int(line[7:])  # The initial state
             elif line.startswith('AP'):
                 char_map = {i:c for i,c in enumerate(re.sub("[^\w]", " ",  line[4:]).split()[1:])}  # Maps ids to atomic propositions
+               
+                if extra_aps is not None:
+                    start_ind=len(char_map.keys())
+                    for ap in extra_aps:
+                        if ap[0] not in char_map.values():
+                            char_map[start_ind] = ap[0]
+                            start_ind+=1
+
                 ap_list = [tuple(ap) for ap in self.powerset(sorted(char_map.values()))]  # The list of all subsets of AP.
+            
             elif line.startswith('Acceptance'):
                 n_pairs = int(line.split()[1])//2  # Zero for the Buchi condition
-                
-        body_lines = body.splitlines()[:-1]  # Ignore the last line
         
+
+        body_lines = body.splitlines()[:-1]  # Ignore the last line
+        # print(body_lines)
         # Get the number of states
         n_qs = 0  # The number of states
         for line in reversed(body_lines):  # Loop over all states because the states might not be ordered.
@@ -131,6 +141,7 @@ class OmegaAutomaton:
                 else:
                     # Get the acceptance status of the transition
                     acc_set = set([int(a) for a in _acc_set.split()])  # The set of acceptance states that the transition belongs to
+                    # print( line)
                     if not n_pairs: # acc_name == 'Buchi':
                         t_acc = [True if 0 in acc_set else None]  # If it is an Buchi set, then it is True and None otherwise
                     else:
@@ -141,11 +152,13 @@ class OmegaAutomaton:
                             if 2*i in acc_set:
                                 t_acc[i] = False  # False if it belongs to the first set of the Rabin pair
                     
+                    # print(t_acc)
                     labels = ['']
                     _labels = re.compile('[()]').split(_label)  # The transitions might have subformulas
                     for _l in _labels:
                         labels = [l+_ll for l in labels for _ll in _l.split('|')]  # Add all the combinations
 
+                   
                     for label in labels:
                         if label == 't':  # Means all the transitions
                             label_acc, label_rej = set(()), set(())
@@ -153,10 +166,12 @@ class OmegaAutomaton:
                             ls = list(filter(None,re.compile('[\s&]').split(label)))  # Get the atoms
                             label_acc = set([char_map[int(l)] for l in ls if not l.startswith('!')])  # Transitions having these atoms
                             label_rej = set([char_map[int(l[1:])] for l in ls if l.startswith('!')])  # Transitions that doesn't have these
-
+                        # print(label_acc)
                         for ap in delta[q]:  # Find all the matching transitions
                             # If matches, update the transition properties
+                            # print('--- ', ap, '- ', not(label_acc-set(ap)), '- ', label_rej, ' - ', (label_rej-set(ap)))
                             if not(label_acc-set(ap)) and (label_rej-set(ap))==label_rej:  
+                                print('here' , dst, t_acc)
                                 delta[q][ap] = dst
                                 acc[q][ap] = t_acc
 
