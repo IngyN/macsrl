@@ -1,5 +1,5 @@
 import numpy as np
-from itertools import product
+ 
 from csrl.mdp import GridMDP
 import os
 import importlib
@@ -10,6 +10,15 @@ import matplotlib.pyplot as plt
 from ipywidgets.widgets import IntSlider
 from ipywidgets import interact
 
+
+# def parse_starting_pos(nagents,obs, total_food):
+#     player_info = obs[0][total_food*3:]
+#     res = tuple()
+
+#     for i in range(nagents):
+#         res += (tuple(player_info[i*3:i*3+2]),)
+
+#     return res
 
 class MultiControlSynthesis:
 
@@ -24,6 +33,7 @@ class MultiControlSynthesis:
 
         self.shared_oa = sharedoa
         self.reward = np.zeros(shape=self.shape[1:-1]+mdp.shape)
+        self.reward_amount = 1-self.agent_control[0].discountB
 
         # tODO make a new reward matrix based on both agents
         if sharedoa:
@@ -35,7 +45,7 @@ class MultiControlSynthesis:
                         if not label in global_l:
                             global_l = global_l + (label,)
                     global_l = tuple(sorted(global_l))
-                    self.reward[i,q,r,c, r1, c1] =   
+                    self.reward[i,q,r,c, r1, c1] = self.reward_amount if self.oa.acc[q][global_l][i] else 0
                     # if q == oa.shape[1]-1: # trap state
                     #     self.reward[i,q,r,c, r1, c1] = -1
 
@@ -50,8 +60,11 @@ class MultiControlSynthesis:
         for i in range(self.nagents):
             self.Q[i] = self.agent_control[i].q_learning(start=self.starts[i], T=T, K=K)
 
+    # CSRL MDP experiments
     def combined_qlearning(self, T=None, K=None):
         """Performs the Q-learning algorithm for 2 agents while triggering events and returns the action values.
+
+        --> global labels but not time dependent
         
         Parameters
         ----------
@@ -113,13 +126,6 @@ class MultiControlSynthesis:
                     # print('shape :', self.agent_control[i].shape)
                     next_state[i] = np.array(states[np.random.choice(len(states), p=probs)])
 
-                    # add transition_reward -5 trap, -1 for self loop based on automaton state/transition
-                    # try encouraging transitions instead of discouraging self loop?
-                    # if (next_state[i][1] !=  state[i][1]) and reward[i] > 0: # self loop
-                    #     reward[i] += 0.05
-
-                    # TODO find out how to OR the label using the action. -> understand the action matrix better
-
                 global_labels = ()
                 for j in range(self.nagents):
                     for label in self.mdp.label[tuple(next_state[j][2:])]:
@@ -147,8 +153,11 @@ class MultiControlSynthesis:
         
         return self.Q
 
-    def combined_qlearning_sharedstate(self, T=None, K=None):
+    # this was added to be compatible with foraging MDP
+    def combined_learning(self, env, T=None, K=None):
         """Performs the Q-learning algorithm for 2 agents while triggering events and returns the action values.
+
+        --> global labels and TIME dependent
         
         Parameters
         ----------
@@ -170,57 +179,54 @@ class MultiControlSynthesis:
         T = T if T else np.prod(self.shape[1:-1])
         K = K if K else 100000
         
-        Q = np.zeros((self.nagents,)+self.shape[1:-1]+self.mdp.shape+(self.shape[-1],)) 
-        print(Q.shape)
-
-        state = np.zeros(shape=(self.nagents*2), dtype=int)
-        oa_state = np.zeros(shape=(self.nagents,2), dtype=int)
-        next_oa_state = np.zeros(shape=(self.nagents,2), dtype=int)
+        # Q = np.zeros(self.shape[1:-1]+mdp.shape+mdp.shape) 
+        # print(Q.shape)
+        state = np.zeros(shape=(self.nagents,4), dtype=int)
         action = np.zeros(shape=(self.nagents,1), dtype=int)
         reward = np.zeros(shape=(self.nagents, 1))
-        next_state = np.zeros(shape=(self.nagents*2), dtype=int)
-        trap = self.agent_control[0].oa.shape[1]-1
+        next_state = np.zeros(shape=(self.nagents,4), dtype=int)
+        global_labels = None
 
         for k in range(K):
-            state = (self.starts[0] if self.starts[0] else self.mdp.random_state()) \
-                                    +(self.starts[1] if self.starts[1] else self.mdp.random_state())
-            for i in range(self.nagents): 
-                oa_state[i] = (self.shape[1]-1, self.agent_control[i].oa.q0)
+            state[0] = (self.shape[1]-1, self.agent_control[0].oa.q0)+(self.starts[0] if self.starts[0] else self.mdp.random_state())
+            state[1] = (self.shape[1]-1, self.agent_control[1].oa.q0)+(self.starts[1] if self.starts[1] else self.mdp.random_state())
 
             alpha = np.max((1.0*(1 - 1.5*k/K),0.001))
             epsilon = np.max((1.0*(1 - 1.5*k/K),0.01))
-            print(f'------------ episode {k}')
+
+            # reset the environment and parse starting player positions
+            starting_obs=env.reset()
+            total_food = env.get_total_food()
+            positions = self.parse_starting_pos(starting_obs, total_food)
+
+            for i in range(self.nagents): # initialize for step 1 of episode
+                state[i] = (self.shape[1]-1, self.agent_control[i].oa.q0)+()
+                reward[i] = self.agent_control[i].reward[tuple(state[i])]
 
             for t in range(T):
-                
-                state= tuple(state)
+                # print("state :",state[0], ' - ', state[0][:2], ' - ',  state[0][2:])
 
-                for i in range(self.nagents):
-                    reward[i] = self.reward[tuple(oa_state[i]) + state]
+                if global_labels: # triggers from step 2
+                    reward = np.ones(shape=(self.nagents,1)) * (self.reward_amount if self.oa.acc[q][global_labels][i] else 0)
 
                 gamma = [self.agent_control[i].discountB if reward[i] else self.agent_control[i].discount for i in range(self.nagents)]
                 
                 for i in range(self.nagents):
-                    state_i = tuple(oa_state[i])+tuple(state[i*2:(i+1)*2]) 
                     # Follow an epsilon-greedy policy
-                    if np.random.rand() < epsilon or np.max(Q[i][tuple(oa_state[i])+tuple(state)])==0:
-                        action[i] = np.random.choice(self.agent_control[i].A[state_i])  # Choose among the MDP and epsilon actions
+                    if np.random.rand() < epsilon or np.max(self.Q[i][tuple(state[i])])==0:
+                        action[i] = np.random.choice(self.agent_control[i].A[tuple(state[i])])  # Choose among the MDP and epsilon actions
                     else:
-                        action[i] = np.argmax(Q[i][tuple(oa_state[i])+ tuple(state)])
+                        action[i] = np.argmax(self.Q[i][tuple(state[i])])
 
                     # Observe the next state
-                    states, probs = self.agent_control[i].transition_probs[state_i][action[i]][0]
+                    states, probs = self.agent_control[i].transition_probs[tuple(state[i])][action[i]][0]
                     #print('states: ', states)
-                    # print('shape :', states, probs)
-                    chosen = np.array(states[np.random.choice(len(states), p=probs)])
-                    # print(state_i, chosen)
-                    next_state[i*2:2+i*2] = chosen[2:]
-                    oa_state[i] = chosen[0:2]
-
+                    # print('shape :', self.agent_control[i].shape)
+                    next_state[i] = np.array(states[np.random.choice(len(states), p=probs)])
 
                 global_labels = ()
                 for j in range(self.nagents):
-                    for label in self.mdp.label[tuple(next_state[j*2:2+j*2])]:
+                    for label in get_labels(state[i][:2], env.get_total_food()):
                         if not label in global_labels:
                             global_labels = global_labels + (label,)
 
@@ -228,29 +234,21 @@ class MultiControlSynthesis:
                 # labels_temp = [x for x in global_labels if x in self.agent_control[i].oa.all_labels]
 
                 # if len(global_labels) > 0:
-                #     print(f"trap: {trap} , actions {list(action.flatten())}, oa_state {list(oa_state.flatten())}, state :{state}, nextstate :{tuple(next_state)}",' -- new labels: ', global_labels)
-                # else:
-                #     print(f"trap: {trap} , actions {list(action.flatten())}, oa_state {list(oa_state.flatten())}, state :{state}, nextstate :{tuple(next_state)}")
+                #     print('labels: ', global_labels)
+                temp = self.oa.delta[next_state[0][1]][global_labels]
 
-                # transition OA states
-                flag_trap = np.zeros(self.nagents)
                 for i in range(self.nagents):
+                    # transition OA states
+                    next_state[i][1] = temp
+
                     # Q-update
-                    # print(Q[i].shape, state, next_state)
-                    next_oa_state[i][1] = self.oa.delta[oa_state[i][1]][global_labels]
-                    Q[i][tuple(oa_state[i])+state][action[i]] += alpha * (reward[i] \
-                                + gamma[i]*np.max(Q[i][tuple(next_oa_state[i])+tuple(next_state)]) - Q[i][tuple(oa_state[i])+state][action[i]])
+                    self.Q[i][tuple(state[i])][action[i]] += alpha * (reward[i] + gamma[i]*np.max(self.Q[i][tuple(next_state[i])]) - self.Q[i][tuple(state[i])][action[i]])
 
-                    if oa_state[i][1] == trap  and next_oa_state[i][1] == trap : # trap state
-                        flag_trap[i] = 1;
+                    state[i] = deepcopy(next_state[i])
 
-                state = deepcopy(tuple(next_state))
-                oa_state=deepcopy(next_oa_state)
-
-                if flag_trap.all():
-                    break
+        env.close()
         
-        return Q
+        return self.Q
 
     def plot(self, i, value=None, iq=None, **kwargs):
         self.agent_control[i].plot(policy=np.argmax(self.Q[i], axis=4), value=np.max(self.Q[i],axis=4))

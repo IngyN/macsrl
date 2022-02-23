@@ -171,7 +171,7 @@ class OmegaAutomaton:
                             # If matches, update the transition properties
                             # print('--- ', ap, '- ', not(label_acc-set(ap)), '- ', label_rej, ' - ', (label_rej-set(ap)))
                             if not(label_acc-set(ap)) and (label_rej-set(ap))==label_rej:  
-                                print('here' , dst, t_acc)
+                                #print('here' , dst, t_acc)
                                 delta[q][ap] = dst
                                 acc[q][ap] = t_acc
 
