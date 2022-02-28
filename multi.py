@@ -35,6 +35,9 @@ class MultiControlSynthesis:
         self.reward = np.zeros(shape=self.shape[1:-1]+mdp.shape)
         self.reward_amount = 1-self.agent_control[0].discountB
 
+        if oa:
+            self.oa = oa
+
         # tODO make a new reward matrix based on both agents
         if sharedoa:
             self.oa = oa
@@ -154,7 +157,7 @@ class MultiControlSynthesis:
         return self.Q
 
     # this was added to be compatible with foraging MDP
-    def combined_learning(self, env, T=None, K=None):
+    def combined_learning(self, env, T=None, K=None, debug=False):
         """Performs the Q-learning algorithm for 2 agents while triggering events and returns the action values.
 
         --> global labels and TIME dependent
@@ -185,7 +188,7 @@ class MultiControlSynthesis:
         action = np.zeros(shape=(self.nagents,1), dtype=int)
         reward = np.zeros(shape=(self.nagents, 1))
         next_state = np.zeros(shape=(self.nagents,4), dtype=int)
-        global_labels = None
+        
 
         for k in range(K):
             state[0] = (self.shape[1]-1, self.agent_control[0].oa.q0)+(self.starts[0] if self.starts[0] else self.mdp.random_state())
@@ -197,17 +200,20 @@ class MultiControlSynthesis:
             # reset the environment and parse starting player positions
             starting_obs=env.reset()
             total_food = env.get_total_food()
-            positions = self.parse_starting_pos(starting_obs, total_food)
+            positions = env.get_player_positions()
+            global_labels = None
 
             for i in range(self.nagents): # initialize for step 1 of episode
-                state[i] = (self.shape[1]-1, self.agent_control[i].oa.q0)+()
+                state[i] = (self.shape[1]-1, self.agent_control[i].oa.q0)+positions[i]
                 reward[i] = self.agent_control[i].reward[tuple(state[i])]
+
+            # print(f"state : {state}")
 
             for t in range(T):
                 # print("state :",state[0], ' - ', state[0][:2], ' - ',  state[0][2:])
 
                 if global_labels: # triggers from step 2
-                    reward = np.ones(shape=(self.nagents,1)) * (self.reward_amount if self.oa.acc[q][global_labels][i] else 0)
+                    reward = np.ones(shape=(self.nagents,1)) * (self.reward_amount if self.oa.acc[state[0][1]][global_labels][0] else 0)
 
                 gamma = [self.agent_control[i].discountB if reward[i] else self.agent_control[i].discount for i in range(self.nagents)]
                 
@@ -224,17 +230,25 @@ class MultiControlSynthesis:
                     # print('shape :', self.agent_control[i].shape)
                     next_state[i] = np.array(states[np.random.choice(len(states), p=probs)])
 
+                _, _, done, _ = env.step(action)
+
+                if debug:
+                    env.render()
+
                 global_labels = ()
+                # print(f" labels: {self.mdp.get_labels(state[i][:2], env.get_total_food())}")
                 for j in range(self.nagents):
-                    for label in get_labels(state[i][:2], env.get_total_food()):
+                    for label in self.mdp.get_labels(state[i][:2], env.get_total_food()):
                         if not label in global_labels:
                             global_labels = global_labels + (label,)
 
                 global_labels = tuple(sorted(global_labels))
                 # labels_temp = [x for x in global_labels if x in self.agent_control[i].oa.all_labels]
 
-                # if len(global_labels) > 0:
-                #     print('labels: ', global_labels)
+                # if len(global_labels) > 0 and 'e' in global_labels:
+                #     print('- global labels: ', global_labels)
+
+                # sync the oa states
                 temp = self.oa.delta[next_state[0][1]][global_labels]
 
                 for i in range(self.nagents):
