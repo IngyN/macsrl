@@ -258,9 +258,7 @@ class MultiControlSynthesis:
                     # Q-update
                     self.Q[i][tuple(state[i])][action[i]] += alpha * (reward[i] + gamma[i]*np.max(self.Q[i][tuple(next_state[i])]) - self.Q[i][tuple(state[i])][action[i]])
 
-                    state[i] = deepcopy(next_state[i])
-
-        env.close()
+                    state[i] = deepcopy(next_state[i]) 
         
         return self.Q
 
