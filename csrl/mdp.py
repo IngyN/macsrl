@@ -9,7 +9,7 @@ if importlib.util.find_spec('matplotlib'):
     import matplotlib
     import matplotlib.pyplot as plt
     from matplotlib.font_manager import FontProperties
-    matplotlib.font_manager._rebuild()
+    # matplotlib.font_manager._rebuild()
     
 if importlib.util.find_spec('ipywidgets'):
     from ipywidgets.widgets import IntSlider
