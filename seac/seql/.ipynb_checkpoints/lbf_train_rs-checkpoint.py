@@ -54,6 +54,8 @@ class LBFTrainRS(Train):
         )
         self.parser.add_argument("--ltl", type=str, default="(e | XF e)", help="LTL formula for the omega automaton"
         )
+        self.parser.add_argument("--field", type=int, default=4, help="size of field, x*x"
+        )
     
     # This is where to add labels based on desired functionality
     def _make_labels(self):
@@ -70,7 +72,7 @@ class LBFTrainRS(Train):
         # restrict type of foraging env with modified env.  
         
         if self.arglist.env is None:
-            env = ForagingEnv(players=self.arglist.agents, max_player_level=2, field_size=(8,8), max_food=1, sight=8, force_coop=False, max_episode_steps=50)
+            env = ForagingEnv(players=self.arglist.agents, max_player_level=2, field_size=(self.arglist.field,self.arglist.field), max_food=1, sight=8, force_coop=False, max_episode_steps=self.arglist.max_episode_len)
         else:
             env = gym.make(self.arglist.env)
         env = RecordEpisodeStatistics(env, deque_size=10)
@@ -208,8 +210,8 @@ class LBFTrainRS(Train):
                     available_actions[i][a[0]] = True
         
         torch_agent_actions = self.alg.step(obs, explore, available_actions=available_actions)
+        agent_actions = [ac.cpu() for ac in torch_agent_actions]
         
-        agent_actions = (torch_agent_actions).cpu()
         # convert actions to numpy arrays
         onehot_actions = [ac.data.numpy() for ac in agent_actions]
         # convert onehot to ints
@@ -232,6 +234,7 @@ class LBFTrainRS(Train):
             labels.append('f')
         else:
             labels.append('e')
+            # print('no more food')
 
         return tuple(sorted(labels))
     
@@ -278,7 +281,7 @@ class LBFTrainRS(Train):
         
         return reward, done, next_obs, info
 
-    def environment_render(self, plt=None, step=0, info="", inline=True):
+    def environment_render(self, plt=None, step=0, info="", inline=False):
         """
         Render visualisation of environment
         """
