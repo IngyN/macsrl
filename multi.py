@@ -38,7 +38,7 @@ class MultiControlSynthesis:
         if oa:
             self.oa = oa
 
-        # tODO make a new reward matrix based on both agents
+        # make a new reward matrix based on both agents
         if sharedoa:
             self.oa = oa
             for i,q,r,c in self.agent_control[0].states():
@@ -95,6 +95,7 @@ class MultiControlSynthesis:
         action = np.zeros(shape=(self.nagents,1), dtype=int)
         reward = np.zeros(shape=(self.nagents, 1))
         next_state = np.zeros(shape=(self.nagents,4), dtype=int)
+        ep_returns = np.zeros(shape=(K, self.nagents)) 
 
         for k in range(K):
             state[0] = (self.shape[1]-1, self.agent_control[0].oa.q0)+(self.starts[0] if self.starts[0] else self.mdp.random_state())
@@ -110,9 +111,11 @@ class MultiControlSynthesis:
                     if self.shared_oa:
                         comb_state += tuple(state[i][2:])
                         if i == self.nagents-1:
-                            reward = np.ones(shape=(self.nagents,1)) * self.reward[comb_state] 
+                            reward = np.ones(shape=(self.nagents,1)) * self.reward[comb_state]
+                            ep_returns[k] += self.reward[comb_state]
                     else:
                         reward[i] = self.agent_control[i].reward[tuple(state[i])]
+                        ep_returns[k][i] += self.agent_control[i].reward[tuple(state[i])]
 
                 gamma = [self.agent_control[i].discountB if reward[i] else self.agent_control[i].discount for i in range(self.nagents)]
                 
@@ -154,7 +157,7 @@ class MultiControlSynthesis:
 
                     state[i] = deepcopy(next_state[i])
         
-        return self.Q
+        return self.Q, ep_returns
 
     # this was added to be compatible with foraging MDP
     def combined_learning(self, env, T=None, K=None, debug=False):
