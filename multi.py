@@ -159,7 +159,89 @@ class MultiControlSynthesis:
         
         return self.Q, ep_returns
 
-    # this was added to be compatible with foraging MDP
+        # CSRL MDP experiments baseline
+    def combined_qlearning_noshaping(self, discount=0.999, T=None, K=None):
+        """Performs the Q-learning algorithm for 2 agents while triggering events and returns the action values.
+        
+        Parameters
+        ----------
+        start : int
+            The start state of the MDP.
+            
+        T : int
+            The episode length.
+        
+        K : int 
+            The number of episodes.
+            
+        Returns
+        -------
+        Q: array, shape=(n_pairs,n_qs,n_rows,n_cols,n_actions) 
+            The action values learned.
+        """
+        
+        T = T if T else np.prod(self.shape[1:-1])
+        K = K if K else 100000
+        
+        print((self.nagents,)+self.mdp.shape+(len(self.mdp.A),))
+        Q = np.zeros(shape=(self.nagents,)+self.mdp.shape+(len(self.mdp.A),)) 
+        print(Q.shape)
+        state = np.zeros(shape=(self.nagents,2), dtype=int)
+        action = np.zeros(shape=(self.nagents,1), dtype=int)
+        next_state = np.zeros(shape=(self.nagents,2), dtype=int)
+        ep_returns = np.zeros(shape=(K, self.nagents)) 
+        gamma = [discount for i in range(self.nagents)]
+        global_labels = ()
+
+        for k in range(K):
+            state[0] = (self.starts[0] if self.starts[0] else self.mdp.random_state())
+            state[1] = (self.starts[1] if self.starts[1] else self.mdp.random_state())
+
+            alpha = np.max((1.0*(1 - 1.5*k/K),0.001))
+            epsilon = np.max((1.0*(1 - 1.5*k/K),0.01))
+
+            for t in range(T):
+                # print("state :",state[0], ' - ', state[0][:2], ' - ',  state[0][2:])
+                comb_state= tuple(state[0][:2])
+                reward = np.zeros(shape=(self.nagents, 1))
+
+                for i in range(self.nagents):
+                    reward[i] = self.mdp.reward[tuple(state[i])] 
+                    ep_returns[k][i] += reward[i]
+
+                for i in range(self.nagents):
+                    # Follow an epsilon-greedy policy
+                    if np.random.rand() < epsilon or np.max(Q[i][tuple(state[i])])==0:
+                        action[i] = np.random.choice(len(self.mdp.A))  # Choose among the MDP 
+                    else:
+                        action[i] = np.argmax(Q[i][tuple(state[i])])
+
+                    # Observe the next state
+                    states, probs = self.mdp.transition_probs[tuple(state[i])][action[i]][0]
+                    #print('states: ', states)
+                    # print('shape :', self.agent_control[i].shape)
+                    next_state[i] = np.array(states[np.random.choice(len(states), p=probs)])
+
+                # global_labels = ()
+                # for j in range(self.nagents):
+                #     for label in self.mdp.label[tuple(next_state[j][2:])]:
+                #         if not label in global_labels:
+                #             global_labels = global_labels + (label,)
+
+                global_labels = tuple(sorted(global_labels))
+
+                # if len(global_labels) > 0:
+                #     print('labels: ', global_labels)
+
+                for i in range(self.nagents):
+                    # Q-update
+                    Q[i][tuple(state[i])][action[i]] += alpha * (reward[i] + gamma[i]*np.max(Q[i][tuple(next_state[i])]) - Q[i][tuple(state[i])][action[i]])
+
+                    state[i] = deepcopy(next_state[i])
+        
+        return Q, ep_returns
+
+    # this was added to be compatible with foraging MDP -> state space doesnt make any sense. need the state from env
     def combined_learning(self, env, T=None, K=None, debug=False):
         """Performs the Q-learning algorithm for 2 agents while triggering events and returns the action values.
 
