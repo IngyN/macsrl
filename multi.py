@@ -160,7 +160,7 @@ class MultiControlSynthesis:
         return self.Q, ep_returns
 
         # CSRL MDP experiments baseline
-    def combined_qlearning_noshaping(self, discount=0.999, T=None, K=None):
+    def combined_qlearning_noshaping(self, discount=0.999, T=None, K=None, debug=False):
         """Performs the Q-learning algorithm for 2 agents while triggering events and returns the action values.
         
         Parameters
@@ -200,13 +200,20 @@ class MultiControlSynthesis:
             alpha = np.max((1.0*(1 - 1.5*k/K),0.001))
             epsilon = np.max((1.0*(1 - 1.5*k/K),0.01))
 
+            # reset reward
+            self.mdp.running_reward = deepcopy(self.mdp.reward)
+
             for t in range(T):
                 # print("state :",state[0], ' - ', state[0][:2], ' - ',  state[0][2:])
                 comb_state= tuple(state[0][:2])
                 reward = np.zeros(shape=(self.nagents, 1))
 
+                if debug:
+                    print(f't = {t}, state: {state[0]} , {state[1]} \n',self.mdp.running_reward)
+
                 for i in range(self.nagents):
-                    reward[i] = self.mdp.reward[tuple(state[i])] 
+                    reward[i] = self.mdp.running_reward[tuple(state[i])] 
+                    self.mdp.running_reward[tuple(state[i])] = 0 # flags can only be collected once
                     ep_returns[k][i] += reward[i]
 
                 for i in range(self.nagents):
@@ -217,7 +224,11 @@ class MultiControlSynthesis:
                         action[i] = np.argmax(Q[i][tuple(state[i])])
 
                     # Observe the next state
+                    if debug:
+                        print('action : ', action[i], ' -- pol: ', self.mdp.transition_probs[tuple(state[i])][action[i]])
+
                     states, probs = self.mdp.transition_probs[tuple(state[i])][action[i]][0]
+                    
                     #print('states: ', states)
                     # print('shape :', self.agent_control[i].shape)
                     next_state[i] = np.array(states[np.random.choice(len(states), p=probs)])
@@ -385,7 +396,10 @@ class MultiControlSynthesis:
         state = []
 
         for i in range(self.nagents):
-            state.append((self.shape[1]-1,agents[i].oa.q0)+self.starts[i])
+            if qlearning:
+                state.append((self.shape[1]-1,agents[i].oa.q0)+self.starts[i])
+            else:
+                state.append( self.starts[i])
 
         episode = [state]
         print('e', episode)
@@ -397,22 +411,24 @@ class MultiControlSynthesis:
                     # print(f'agent {i}', policy[i][state[i]])
                     states, probs = agents[i].transition_probs[state[i]][policy[i][state[i]]]
                 else:
-                    states, probs = agents[i].transition_probs[state[i]][policy[i][state[i]]]
+                    states = self.mdp.transition_probs[tuple(state[i])][policy[i][state[i]]][0]
+                    probs = self.mdp.transition_probs[tuple(state[i])][policy[i][state[i]]][1]
                 #print('next:',states[np.random.choice(len(states), p=probs)])
                 next_state.append(states[np.random.choice(len(states), p=probs)])
 
-            global_labels = ()
-            for j in range(self.nagents):
-                for label in self.mdp.label[tuple(next_state[j][2:])]:
-                    if not label in global_labels:
-                        global_labels = global_labels + (label,)
-            global_labels = tuple(sorted(global_labels))
+            if qlearning:
+                global_labels = ()
+                for j in range(self.nagents):
+                    for label in self.mdp.label[tuple(next_state[j][2:])]:
+                        if not label in global_labels:
+                            global_labels = global_labels + (label,)
+                global_labels = tuple(sorted(global_labels))
 
-            for i in range(self.nagents):
-                temp = list(next_state[i])
-                # transition OA states
-                temp[1] = self.agent_control[i].oa.delta[next_state[i][1]][global_labels]
-                next_state[i] = tuple(temp)
+                for i in range(self.nagents):
+                    temp = list(next_state[i])
+                    # transition OA states
+                    temp[1] = self.agent_control[i].oa.delta[next_state[i][1]][global_labels]
+                    next_state[i] = tuple(temp)
 
             episode.append(next_state)
             state = next_state
@@ -433,8 +449,12 @@ class MultiControlSynthesis:
                 os.makedirs(animation)
             for t in range(T):
                 print(t, ': ', episode[t][0][1:], '\t', episode[t][1][1:])
-                mdp2.multi_plot(nagents=self.nagents, policy=[policy[0][episode[t][0][:2]], policy[1][episode[t][1][:2]]],
-                    agent=[episode[t][0][2:], episode[t][1][2:]],save=animation+os.sep+str(t).zfill(pad)+'_comb.png')
+                if qlearning:
+                    mdp2.multi_plot(nagents=self.nagents, policy=[policy[0][episode[t][0][:2]], policy[1][episode[t][1][:2]]],
+                        agent=[episode[t][0][2:], episode[t][1][2:]],save=animation+os.sep+str(t).zfill(pad)+'_comb.png')
+                else:    
+                    mdp2.multi_plot(nagents=self.nagents, policy=policy,
+                    agent=[episode[t][0], episode[t][1]],save=animation+os.sep+str(t).zfill(pad)+'.png')
                 plt.close()
 
         return episode
