@@ -11,6 +11,9 @@ from ipywidgets.widgets import IntSlider
 from ipywidgets import interact
 
 
+from logger import Trace
+
+
 # def parse_starting_pos(nagents,obs, total_food):
 #     player_info = obs[0][total_food*3:]
 #     res = tuple()
@@ -64,7 +67,7 @@ class MultiControlSynthesis:
             self.Q[i] = self.agent_control[i].q_learning(start=self.starts[i], T=T, K=K)
 
     # CSRL MDP experiments
-    def combined_qlearning(self, T=None, K=None):
+    def combined_qlearning(self, T=None, K=None, it = 0, debug=False):
         """Performs the Q-learning algorithm for 2 agents while triggering events and returns the action values.
 
         --> global labels but not time dependent
@@ -88,14 +91,16 @@ class MultiControlSynthesis:
         
         T = T if T else np.prod(self.shape[1:-1])
         K = K if K else 100000
-        
+        offset = 5
+
         # Q = np.zeros(self.shape[1:-1]+mdp.shape+mdp.shape) 
         # print(Q.shape)
         state = np.zeros(shape=(self.nagents,4), dtype=int)
         action = np.zeros(shape=(self.nagents,1), dtype=int)
         reward = np.zeros(shape=(self.nagents, 1))
         next_state = np.zeros(shape=(self.nagents,4), dtype=int)
-        ep_returns = np.zeros(shape=(K, self.nagents)) 
+        ep_returns = np.zeros(shape=(K, self.nagents))
+        trace = Trace(self.nagents, K, T)
 
         for k in range(K):
             state[0] = (self.shape[1]-1, self.agent_control[0].oa.q0)+(self.starts[0] if self.starts[0] else self.mdp.random_state())
@@ -103,9 +108,11 @@ class MultiControlSynthesis:
 
             alpha = np.max((1.0*(1 - 1.5*k/K),0.001))
             epsilon = np.max((1.0*(1 - 1.5*k/K),0.01))
+            labels_seen = set()
 
             for t in range(T):
                 # print("state :",state[0], ' - ', state[0][:2], ' - ',  state[0][2:])
+                available_actions = []
                 comb_state= tuple(state[0][:2])
                 for i in range(self.nagents):
                     if self.shared_oa:
@@ -126,6 +133,8 @@ class MultiControlSynthesis:
                     else:
                         action[i] = np.argmax(self.Q[i][tuple(state[i])])
 
+                    available_actions.append(self.agent_control[i].A[tuple(state[i])])
+
                     # Observe the next state
                     states, probs = self.agent_control[i].transition_probs[tuple(state[i])][action[i]][0]
                     #print('states: ', states)
@@ -141,10 +150,17 @@ class MultiControlSynthesis:
                 global_labels = tuple(sorted(global_labels))
                 # labels_temp = [x for x in global_labels if x in self.agent_control[i].oa.all_labels]
 
-                # if len(global_labels) > 0:
-                #     print('labels: ', global_labels)
+                if len(global_labels) > 0 and debug:
+                    print('labels: ', global_labels)
+
+                labels_seen.update(global_labels)
+
+                
                 if self.shared_oa:
                     temp = self.oa.delta[next_state[0][1]][global_labels]
+
+                if k > K-offset:
+                    trace.add_episode(t, k, it, reward, state, action, global_labels, labels_seen.copy(), available_actions)
 
                 for i in range(self.nagents):
                     # transition OA states
@@ -156,11 +172,13 @@ class MultiControlSynthesis:
                     self.Q[i][tuple(state[i])][action[i]] += alpha * (reward[i] + gamma[i]*np.max(self.Q[i][tuple(next_state[i])]) - self.Q[i][tuple(state[i])][action[i]])
 
                     state[i] = deepcopy(next_state[i])
+
+                
         
-        return self.Q, ep_returns
+        return self.Q, ep_returns, trace
 
         # CSRL MDP experiments baseline
-    def combined_qlearning_noshaping(self, discount=0.999, T=None, K=None, debug=False):
+    def combined_qlearning_noshaping(self, discount=0.999, it =0, T=None, K=None, debug=False):
         """Performs the Q-learning algorithm for 2 agents while triggering events and returns the action values.
         
         Parameters
@@ -192,13 +210,15 @@ class MultiControlSynthesis:
         ep_returns = np.zeros(shape=(K, self.nagents)) 
         gamma = [discount for i in range(self.nagents)]
         global_labels = ()
-
+        trace = Trace(self.nagents, K, T)
+        labels_seen = set()
         for k in range(K):
             state[0] = (self.starts[0] if self.starts[0] else self.mdp.random_state())
             state[1] = (self.starts[1] if self.starts[1] else self.mdp.random_state())
 
             alpha = np.max((1.0*(1 - 1.5*k/K),0.001))
             epsilon = np.max((1.0*(1 - 1.5*k/K),0.01))
+            labels_seen.clear()
 
             # reset reward
             self.mdp.running_reward = deepcopy(self.mdp.reward)
@@ -207,6 +227,7 @@ class MultiControlSynthesis:
                 # print("state :",state[0], ' - ', state[0][:2], ' - ',  state[0][2:])
                 comb_state= tuple(state[0][:2])
                 reward = np.zeros(shape=(self.nagents, 1))
+                available_actions = []
 
                 if debug:
                     print(f't = {t}, state: {state[0]} , {state[1]} \n',self.mdp.running_reward)
@@ -223,23 +244,28 @@ class MultiControlSynthesis:
                     else:
                         action[i] = np.argmax(Q[i][tuple(state[i])])
 
+                    available_actions.append(self.mdp.A)
+
                     # Observe the next state
                     if debug:
                         print('action : ', action[i], ' -- pol: ', self.mdp.transition_probs[tuple(state[i])][action[i]])
 
                     states, probs = self.mdp.transition_probs[tuple(state[i])][action[i]][0]
-                    
+
                     #print('states: ', states)
                     # print('shape :', self.agent_control[i].shape)
                     next_state[i] = np.array(states[np.random.choice(len(states), p=probs)])
 
-                # global_labels = ()
-                # for j in range(self.nagents):
-                #     for label in self.mdp.label[tuple(next_state[j][2:])]:
-                #         if not label in global_labels:
-                #             global_labels = global_labels + (label,)
+                global_labels = ()
+                for j in range(self.nagents):
+                    for label in self.mdp.label[tuple(next_state[j])]:
+                        if not label in global_labels:
+                            global_labels = global_labels + (label,)
 
                 global_labels = tuple(sorted(global_labels))
+
+                labels_seen.update(global_labels)
+                trace.add_episode(t, k, it, reward, state, action, global_labels, deepcopy(labels_seen), available_actions)
 
                 # if len(global_labels) > 0:
                 #     print('labels: ', global_labels)
@@ -250,7 +276,7 @@ class MultiControlSynthesis:
 
                     state[i] = deepcopy(next_state[i])
         
-        return Q, ep_returns
+        return Q, ep_returns, trace
 
     # this was added to be compatible with foraging MDP -> state space doesnt make any sense. need the state from env
     def combined_learning(self, env, T=None, K=None, debug=False):
