@@ -20,7 +20,7 @@ class InteractiveLandmarkBelief(Enum):
 
 class Annotation:
     
-    def __init__(self,mdp, oa, obs_radius = math.inf, direction=False, adv_radius= math.inf, interactive=[], agents=2, targets=None):
+    def __init__(self,mdp, oa, obs_radius = math.inf, direction=False, adv_radius= math.inf, interactive=[], agents=2, targets=None, debug=False):
         self.ego_radius_constant = obs_radius
         self.resources = None
         self.xmax_constant = mdp.shape[0]-1 # TODO this might be flipped
@@ -37,6 +37,7 @@ class Annotation:
         self.has_resources = (self.resources is not None)
         self.scan_action = None
         self.adv_draw_area_boundaries = False
+        self.has_goal_action=True
         
         # parse # oa actions
         self.epsilon_actions = 0
@@ -49,9 +50,9 @@ class Annotation:
                 self.act_index[e+len(mdp.A)] = len(mdp.A)+self.epsilon_actions
                 self.epsilon_actions+= 1
                 
-        self.parse_mdp(mdp, agents, targets)
+        self.parse_mdp(mdp, agents, targets, debug=debug)
 
-    def parse_mdp(self, mdp, agents, targets):
+    def parse_mdp(self, mdp, agents, targets, debug=False):
 
         self.states = []
         for i in range(agents):
@@ -68,11 +69,13 @@ class Annotation:
         for x in range(mdp.shape[0]):
             for y in range(mdp.shape[1]):
                 for j in range(self.nr_interactive_landmarks):
-                    if mdp.label[x][y] == self.landmark_label[j]:
+                    if debug:
+                        print(f' x:{x}, y:{y}, {mdp.label[x][y]}')
+                    if self.landmark_label[j] in mdp.label[x][y]:
                         self.interactive_landmark_constants[j] = [x,y]
                 
                 for i in range(len(self.target_label)):
-                    if mdp.label[x][y] == self.target_label[i]:
+                    if self.target_label[i] in mdp.label[x][y]:
                         self.target_loc[i] = [x,y]
             
             

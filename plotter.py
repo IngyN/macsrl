@@ -15,7 +15,7 @@ from matplotlib.offsetbox import TextArea, DrawingArea, OffsetImage, AnnotationB
 
 logger = logging.getLogger(__name__)
 
-colors = mpl.colors.ListedColormap(['#FFFFFF', 'crimson', 'green', 'gold', 'violet', 'lightskyblue', 'orange', 'greenyellow'])
+colors = mpl.colors.ListedColormap(['#FFFFFF', 'crimson', 'lightskyblue', 'gold', 'violet', 'lightskyblue', 'orange', 'greenyellow'])
 data_colors = {
     "TRAP" : 1,
     "GOAL" : 2,
@@ -23,7 +23,7 @@ data_colors = {
     "ADVBELIEF" : 4,
     "EGOBELIEF" : 5,
     "ADVGOAL" : 6,
-    "GOALAREA" : 7
+    "GOALAREA" : 5
 }
 
 Actions = ['U','D','R','L']  
@@ -44,7 +44,7 @@ class InteractiveLandmarkBelief(Enum):
 
 
 class Plotter:
-    def __init__(self, annotation, model, vals):
+    def __init__(self, annotation, model, vals=None, shaping=True):
         self._model = model
         self._state_vals = vals
         self._tmp_objects = []
@@ -58,6 +58,7 @@ class Plotter:
         self._ego_image = None
         self._title = None
         self.landmark_status = [InteractiveLandmarkStatus.NEGATIVE] * annotation.nr_interactive_landmarks
+        self.has_shaping = shaping
 
         self._ego_scanned_last_round = False
 
@@ -97,7 +98,7 @@ class Plotter:
         if self._annotation.has_static_targets:
             for i in range(self._model.shape[0]):
                 for j in range(self._model.shape[1]):
-                    if self._model.label[i][j] == self._annotation.target_label:
+                    if self._annotation.target_label[0] in self._model.label[i][j]:
                         result.append([i,j])
         return result
 
@@ -108,7 +109,7 @@ class Plotter:
         if self._annotation.has_landmarks:
             for i in range(self._model.shape[0]):
                 for j in range(self._model.shape[1]):
-                    if self._model.label[i][j] == self._annotation.landmark_label:
+                    if self._annotation.landmark_label in self._model.label[i][j] :
                         result.append([i,j])
         return result
 
@@ -118,7 +119,7 @@ class Plotter:
         if self._annotation.trap_label:
             for i in range(self._model.shape[0]):
                 for j in range(self._model.shape[1]):
-                    if self._model.structure[i][j] == self._annotation.trap_label:
+                    if self._annotation.trap_label in self._model.structure[i][j]:
                         result.append([i,j])
         return result
 
@@ -128,8 +129,9 @@ class Plotter:
         if self._annotation.target_label[1:]:
             for i in range(self._model.shape[0]):
                 for j in range(self._model.shape[1]):
-                    if self._model.label[i][j] in self._annotation.target_label[1:]:
-                        result.append([i,j])
+                    for k in range(self._annotation.n_agents-1):
+                        if self._annotation.target_label[k+1] in self._model.label[i][j]:
+                            result.append([i,j])
         return result
 
     def load_ego_image(self, path, zoom=0.2):
@@ -217,6 +219,7 @@ class Plotter:
                 color = 'darkgreen'
             elif status == InteractiveLandmarkStatus.NEGATIVE:
                 color = 'darkred'
+            
             adv = patches.RegularPolygon((xloc + 0.5, yloc + 0.5), 7, 0.35, linewidth=1, edgecolor=color, facecolor=color)
             props = dict(boxstyle='round', facecolor='yellow', alpha=1)
             propsid = dict(boxstyle='round', facecolor='white', alpha=0.7)
@@ -231,7 +234,7 @@ class Plotter:
 
             self._tmp_objects.append(adv)
 
-    def _set_adversary(self, xloc, yloc, adv_direction, radius, i=0):
+    def _set_adversary(self, xloc, yloc, adv_direction, radius, q, i=0):
         if adv_direction is None:
             adv = patches.Rectangle((xloc + 0.25, yloc + 0.25), 0.5, 0.5, linewidth=1, edgecolor='saddlebrown', facecolor='sienna')
         else:
@@ -252,14 +255,14 @@ class Plotter:
 
         props = dict(boxstyle='round', facecolor='lavender', alpha=0.5)
         if adv_direction is None:
-            text = f"x={xloc},y={yloc}"
+            text = f"x={xloc},y={yloc}, q={q}"
         else:
             text = f"x={xloc},y={yloc},d={adv_direction}"
         txt = self._ax_info.text(0.05, 0.88-i*0.07, text, transform=self._ax_info.transAxes, fontsize=10,
                       verticalalignment='top', bbox=props)
         self._tmp_objects.append(txt)
 
-    def _set_ego(self, ax, xloc, yloc, radius):
+    def _set_ego(self, ax, xloc, yloc, q, radius):
         # Create a Rectangle patch
         if self._ego_image:
             ego = AnnotationBbox(self._ego_image, (xloc+0.5, yloc+0.5))
@@ -280,7 +283,7 @@ class Plotter:
         self._tmp_objects.append(ego)
 
         props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-        text = f"x={xloc},y={yloc}"
+        text = f"x={xloc},y={yloc}, q={q}"
         txt = self._ax_info.text(0.05, 0.95, text, transform=self._ax_info.transAxes, fontsize=10,
                 verticalalignment='top', bbox=props)
         self._tmp_objects.append(txt)
@@ -310,15 +313,17 @@ class Plotter:
         if action is None:
             return None
         return acts[self._annotation.act_index[action]]
-
-    def _set_actions(self, state, xloc, yloc, available, selected):
+    
+    def _set_adv_actions(self, state, xloc, yloc, available, selected, debug=False):
         acts = deepcopy(self._model.A)
+    
         # print(acts)
         for i in range(self._annotation.epsilon_actions):
             acts.append(f'$\epsilon_{i+1}$')
             
         # print(self._annotation.epsilon_actions)
-        # print(acts)
+        if debug:
+            print(acts)
         maxlen = 0
         for act in acts:
             maxlen = max(maxlen, len(act))
@@ -330,7 +335,82 @@ class Plotter:
         allowed_strings = Actions
         # allowed_strings = [l[0] if len(l) > 0 else None for l in allowed_strings]
         if selected is not None:
-            selected_string =acts[selected]
+            selected_string =acts[self._annotation.act_index[selected]]
+        else:
+            selected_string = "--end--"
+                    
+        logger.debug(available_strings)
+        logger.debug(allowed_strings)
+        logger.debug(selected_string)
+        props_unavailable = dict(boxstyle='round', facecolor='gray', alpha=0.5)
+        props_notallowed = dict(boxstyle='round', facecolor='red', alpha=0.5)
+        props_notselected = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+        props_selected = dict(boxstyle='round', facecolor='green', alpha=0.5)
+        for i,act in enumerate(acts):
+            # print(act)
+            text = act.ljust(maxlen)
+            if act not in available_strings:
+                props = props_unavailable
+            # elif act not in allowed_strings:
+            #     props = props_notallowed
+            elif act == selected_string:
+                props = props_selected
+            else:
+                props = props_notselected
+            txt = self._ax_info.text(0.5, 0.70-0.07*i, text, fontdict={'family': 'monospace'}, transform=self._ax_info.transAxes, fontsize=10,
+                       verticalalignment='top', bbox=props)
+            self._tmp_objects.append(txt)
+            if act not in Actions:
+                continue
+            if act not in available_strings:
+                continue
+            if act == selected_string:
+                fcol = 'green'
+                ecol = 'green'
+            elif act not in allowed_strings:
+                fcol = 'red'
+                ecol = 'red'
+            else:
+                fcol = 'black'
+                ecol = 'black'
+            if act == "U":
+                dx = 0
+                dy = -0.6
+            if act == "D":
+                dx = 0
+                dy = 0.6
+            if act == "L":
+                dx = -0.6
+                dy = 0
+            if act == "R":
+                dx = 0.6
+                dy = 0
+            
+            arr = self._ax.arrow(xloc+0.5, yloc+0.5, dx, dy, head_width=0.12, ec=ecol, fc=fcol, lw=0.01)
+            self._tmp_objects.append(arr)
+
+    def _set_actions(self, state, xloc, yloc, available, selected, debug=False):
+        acts = deepcopy(self._model.A)
+    
+        # print(acts)
+        for i in range(self._annotation.epsilon_actions):
+            acts.append(f'$\epsilon_{i+1}$')
+            
+        # print(self._annotation.epsilon_actions)
+        if debug:
+            print(acts)
+        maxlen = 0
+        for act in acts:
+            maxlen = max(maxlen, len(act))
+
+        available_strings = [acts[self._annotation.act_index[a]] for a in available]
+        # available_strings = [ l[0] if len(l)>0 else None for l in available]
+        # allowed_strings = [list(self._model.choice_labeling.get_labels_of_choice(self._model.get_choice_index(state, act))) for act in
+        #                      allowed]
+        allowed_strings = Actions
+        # allowed_strings = [l[0] if len(l) > 0 else None for l in allowed_strings]
+        if selected is not None:
+            selected_string =acts[self._annotation.act_index[selected]]
         else:
             selected_string = "--end--"
                     
@@ -385,13 +465,21 @@ class Plotter:
             self._tmp_objects.append(arr)
 
     def _get_ego_loc(self, state):
-        ego_xloc = state[3]
-        ego_yloc = state[2]
+        if self.has_shaping:
+            ego_xloc = state[3]
+            ego_yloc = state[2]
+        else:
+            ego_xloc = state[1]
+            ego_yloc= state[0]
         return ego_xloc, ego_yloc
 
     def _get_adv_loc(self, state, index=0):
-        adv_xloc = state[3]
-        adv_yloc = state[2]
+        if self.has_shaping:
+            adv_xloc = state[3]
+            adv_yloc = state[2]
+        else:
+            adv_xloc = state[1]
+            adv_yloc = state[0]
         assert adv_xloc <= self._maxX
         assert adv_yloc <= self._maxY, f"Yloc {adv_yloc} should be on the grid with dimension {self._maxY}"
         return adv_xloc, adv_yloc
@@ -401,14 +489,15 @@ class Plotter:
         y, x = self._annotation.interactive_landmark_constants[index]
         return x,y
 
-    def _get_interactive_landmark_status(self, state, index, labels):
+    def _get_interactive_landmark_status(self, state, index, labels, debug=False):
         
-        if self._annotation.landmark_label[index] in labels:
-            status = InteractiveLandmarkStatus.CLEARED
+        if self._annotation.landmark_label[index] in labels and not (self.landmark_status[index]==InteractiveLandmarkStatus.CLEARED):
+            status = InteractiveLandmarkStatus.CLEARED if (self.landmark_status[index]==InteractiveLandmarkStatus.POSITIVE) else InteractiveLandmarkStatus.POSITIVE
         else:
-            status = InteractiveLandmarkStatus.POSITIVE if self.landmark_status[index]==InteractiveLandmarkStatus.CLEARED  else InteractiveLandmarkStatus.NEGATIVE
+            status =InteractiveLandmarkStatus.CLEARED if (self.landmark_status[index]==InteractiveLandmarkStatus.POSITIVE)  else self.landmark_status[index]
         
-        # print(status)
+        if debug:
+            print(status)
         self.landmark_status[index] = status
         
         return status
@@ -469,7 +558,11 @@ class Plotter:
             self._ego_scanned_last_round = True
         else:
             self._ego_scanned_last_round = False
-        self._set_ego(ax, ego_xloc, ego_yloc, ego_radius)
+        
+        if self.has_shaping:
+            self._set_ego(ax, ego_xloc, ego_yloc, snapshot['state_0'][1], ego_radius)
+        else:
+            self._set_ego(ax, ego_xloc, ego_yloc, 'n/a', ego_radius)
 
         # only for belief support traces
         if hasattr(snapshot, 'potential_states'):
@@ -494,16 +587,20 @@ class Plotter:
             adv_xloc, adv_yloc = self._get_adv_loc(snapshot[f'state_{i+1}'])
             adv_direction = self._get_adv_direction(snapshot[f'state_{i+1}'])
             adv_radius = self._get_adv_radius()
-
-            self._set_adversary(adv_xloc, adv_yloc, adv_direction, adv_radius, i)
-            # TODO display actions they are taking instead of adversaries
+            
+            if self.has_shaping:
+                self._set_adversary(adv_xloc, adv_yloc, adv_direction, adv_radius, snapshot[f'state_{i+1}'][1], i)
+            else:
+                self._set_adversary(adv_xloc, adv_yloc, adv_direction, adv_radius, 'n/a', i)
+            
+            self._set_adv_actions(snapshot[f'state_{i+1}'],adv_xloc, adv_yloc, snapshot[f'available_actions_{i+1}'], snapshot[f'action_{i+1}'][0], debug=debug)
             if hasattr(snapshot, 'potential_states'):
                 for bstate in snapshot['potential_states']:
                     adv_xloc_alt, adv_yloc_alt = self._get_adv_loc(bstate,i)
                     self._set_adv_alternatives(adv_xloc_alt, adv_yloc_alt)
 
         # Determine which actions we take
-        self._set_actions(snapshot['state_0'], ego_xloc, ego_yloc, snapshot['available_actions_0'], snapshot['action_0'][0])
+        self._set_actions(snapshot['state_0'], ego_xloc, ego_yloc, snapshot['available_actions_0'], snapshot['action_0'][0], debug=debug)
 
         # For rendering obstacles that have a state (but that do not move)
         for i in range(self._annotation.nr_interactive_landmarks):
@@ -530,23 +627,23 @@ class Plotter:
         if show:
             plt.show()
 
-    def record(self, file, trace):
+    def record(self, file, trace, debug=False):
         if file.endswith(".gif"):
             gif = True
         else:
             gif = False
 
         if gif:
-            moviewriter = mpl.animation.ImageMagickWriter(fps=3)
+            moviewriter = mpl.animation.ImageMagickWriter(fps=1)
         else:
-            moviewriter = mpl.animation.FFMpegWriter(fps=3)
+            moviewriter = mpl.animation.FFMpegWriter(fps=1)
         if trace.shape[0] == 0:
             print('Error: empty trace!', trace.shape)
         else:
             i = 1
             with moviewriter.saving(self._fig, file, dpi=150):
                 for idx, snapshot in tqdm(trace.iterrows(), total=trace.shape[0]):
-                    self.render(snapshot, show_frame_count=i)
+                    self.render(snapshot, show_frame_count=i, debug=debug)
                     moviewriter.grab_frame()
                     i += 1
             self._reset()

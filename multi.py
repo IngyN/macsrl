@@ -141,6 +141,9 @@ class MultiControlSynthesis:
                     # print('shape :', self.agent_control[i].shape)
                     next_state[i] = np.array(states[np.random.choice(len(states), p=probs)])
 
+                if k > K-offset:
+                    trace.add_episode(t, k, it, reward, state, action, global_labels, labels_seen.copy(), available_actions)
+                    
                 global_labels = ()
                 for j in range(self.nagents):
                     for label in self.mdp.label[tuple(next_state[j][2:])]:
@@ -159,8 +162,7 @@ class MultiControlSynthesis:
                 if self.shared_oa:
                     temp = self.oa.delta[next_state[0][1]][global_labels]
 
-                if k > K-offset:
-                    trace.add_episode(t, k, it, reward, state, action, global_labels, labels_seen.copy(), available_actions)
+                
 
                 for i in range(self.nagents):
                     # transition OA states
