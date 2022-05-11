@@ -67,7 +67,7 @@ class MultiControlSynthesis:
             self.Q[i] = self.agent_control[i].q_learning(start=self.starts[i], T=T, K=K)
 
     # CSRL MDP experiments
-    def combined_qlearning(self, T=None, K=None, it = 0, debug=False):
+    def combined_qlearning(self, offset=5, T=None, K=None, it = 0, debug=False):
         """Performs the Q-learning algorithm for 2 agents while triggering events and returns the action values.
 
         --> global labels but not time dependent
@@ -91,16 +91,17 @@ class MultiControlSynthesis:
         
         T = T if T else np.prod(self.shape[1:-1])
         K = K if K else 100000
-        offset = 5
+        offset = offset
 
-        # Q = np.zeros(self.shape[1:-1]+mdp.shape+mdp.shape) 
-        # print(Q.shape)
+        # Q = np.zeros(self.shape[1:-1]+mdp.shape+mdp.shape)
+        if debug:
+            print(self.shape)
         state = np.zeros(shape=(self.nagents,4), dtype=int)
         action = np.zeros(shape=(self.nagents,1), dtype=int)
         reward = np.zeros(shape=(self.nagents, 1))
         next_state = np.zeros(shape=(self.nagents,4), dtype=int)
         ep_returns = np.zeros(shape=(K, self.nagents))
-        trace = Trace(self.nagents, K, T)
+        trace = Trace(self.nagents)
 
         for k in range(K):
             state[0] = (self.shape[1]-1, self.agent_control[0].oa.q0)+(self.starts[0] if self.starts[0] else self.mdp.random_state())
@@ -171,8 +172,11 @@ class MultiControlSynthesis:
                     else:
                         next_state[i][1] = self.agent_control[i].oa.delta[next_state[i][1]][global_labels]
                     # Q-update
+                    if debug:
+                        print(f' agent: {i}, state:{tuple(state[i])}, action : {action[i]}')
                     self.Q[i][tuple(state[i])][action[i]] += alpha * (reward[i] + gamma[i]*np.max(self.Q[i][tuple(next_state[i])]) - self.Q[i][tuple(state[i])][action[i]])
 
+                for i in range(self.nagents):
                     state[i] = deepcopy(next_state[i])
 
                 
@@ -180,7 +184,7 @@ class MultiControlSynthesis:
         return self.Q, ep_returns, trace
 
         # CSRL MDP experiments baseline
-    def combined_qlearning_noshaping(self, discount=0.999, it =0, T=None, K=None, debug=False):
+    def combined_qlearning_noshaping(self, discount=0.999, it =0, offset=5, T=None, K=None, debug=False, map=None):
         """Performs the Q-learning algorithm for 2 agents while triggering events and returns the action values.
         
         Parameters
@@ -202,9 +206,11 @@ class MultiControlSynthesis:
         
         T = T if T else np.prod(self.shape[1:-1])
         K = K if K else 100000
+        offset = offset
         
-        print((self.nagents,)+self.mdp.shape+(len(self.mdp.A),))
-        Q = np.zeros(shape=(self.nagents,)+self.mdp.shape+(len(self.mdp.A),)) 
+        
+        # print((self.nagents,)+self.mdp.shape*self.nagents+(len(self.mdp.A),))
+        Q = np.zeros(shape=(self.nagents,)+self.mdp.shape*self.nagents+(len(self.mdp.A),)) 
         print(Q.shape)
         state = np.zeros(shape=(self.nagents,2), dtype=int)
         action = np.zeros(shape=(self.nagents,1), dtype=int)
@@ -212,7 +218,7 @@ class MultiControlSynthesis:
         ep_returns = np.zeros(shape=(K, self.nagents)) 
         gamma = [discount for i in range(self.nagents)]
         global_labels = ()
-        trace = Trace(self.nagents, K, T)
+        trace = Trace(self.nagents)
         labels_seen = set()
         for k in range(K):
             state[0] = (self.starts[0] if self.starts[0] else self.mdp.random_state())
@@ -231,32 +237,52 @@ class MultiControlSynthesis:
                 reward = np.zeros(shape=(self.nagents, 1))
                 available_actions = []
 
-                if debug:
-                    print(f't = {t}, state: {state[0]} , {state[1]} \n',self.mdp.running_reward)
+                if map is None or self.nagents!= 2:
+                    for i in range(self.nagents):
+                        reward[i] = self.mdp.running_reward[tuple(state[i])] 
+                        self.mdp.running_reward[tuple(state[i])] = 0 # flags can only be collected once
+                        ep_returns[k][i] += reward[i]
 
-                for i in range(self.nagents):
-                    reward[i] = self.mdp.running_reward[tuple(state[i])] 
-                    self.mdp.running_reward[tuple(state[i])] = 0 # flags can only be collected once
-                    ep_returns[k][i] += reward[i]
+                elif map == 'bench1':
+                
+                    if ('a' in self.mdp.label[tuple(state[0])] ) and ('b' in self.mdp.label[tuple(state[1])] and (self.mdp.running_reward[tuple(state[0])] != 0) ):
+                        reward[0] = 2 ; reward[1]= 2
+                        self.mdp.running_reward[tuple(state[0])] = 0
+                        self.mdp.running_reward[tuple(state[1])] = 0
+
+                    else:
+                        for i in range(self.nagents):
+                            if self.mdp.running_reward[tuple(state[0])] != 2:
+                                reward[i] = self.mdp.running_reward[tuple(state[i])] 
+                                self.mdp.running_reward[tuple(state[i])] = 0
+
+                    for i in range(self.nagents):
+                        ep_returns[k][i] += reward[i]
+                
+                if debug: 
+                    print(f' t = {t}, map:{map},  returns:{ep_returns[k].flatten()} , state:{tuple(state.flatten())}, reward:{reward.flatten()}\n', self.mdp.running_reward)
 
                 for i in range(self.nagents):
                     # Follow an epsilon-greedy policy
-                    if np.random.rand() < epsilon or np.max(Q[i][tuple(state[i])])==0:
+                    if np.random.rand() < epsilon or np.max(Q[i][tuple(state.flatten())])==0:
                         action[i] = np.random.choice(len(self.mdp.A))  # Choose among the MDP 
                     else:
-                        action[i] = np.argmax(Q[i][tuple(state[i])])
+                        action[i] = np.argmax(Q[i][tuple(state.flatten())])
 
                     available_actions.append(self.mdp.A)
 
                     # Observe the next state
-                    if debug:
-                        print('action : ', action[i], ' -- pol: ', self.mdp.transition_probs[tuple(state[i])][action[i]])
+                    # if debug:
+                    #     print('action : ', action[i], ' -- pol: ', self.mdp.transition_probs[tuple(state[i])][action[i]])
 
                     states, probs = self.mdp.transition_probs[tuple(state[i])][action[i]][0]
 
                     #print('states: ', states)
                     # print('shape :', self.agent_control[i].shape)
                     next_state[i] = np.array(states[np.random.choice(len(states), p=probs)])
+
+                if k > K-offset:
+                    trace.add_episode(t, k, it, reward, state, action, global_labels, deepcopy(labels_seen), available_actions)
 
                 global_labels = ()
                 for j in range(self.nagents):
@@ -267,15 +293,16 @@ class MultiControlSynthesis:
                 global_labels = tuple(sorted(global_labels))
 
                 labels_seen.update(global_labels)
-                trace.add_episode(t, k, it, reward, state, action, global_labels, deepcopy(labels_seen), available_actions)
+                
 
                 # if len(global_labels) > 0:
                 #     print('labels: ', global_labels)
 
                 for i in range(self.nagents):
                     # Q-update
-                    Q[i][tuple(state[i])][action[i]] += alpha * (reward[i] + gamma[i]*np.max(Q[i][tuple(next_state[i])]) - Q[i][tuple(state[i])][action[i]])
+                    Q[i][tuple(state.flatten())][action[i]] += alpha * (reward[i] + gamma[i]*np.max(Q[i][tuple(next_state.flatten())]) - Q[i][tuple(state.flatten())][action[i]])
 
+                for i in range(self.nagents):
                     state[i] = deepcopy(next_state[i])
         
         return Q, ep_returns, trace

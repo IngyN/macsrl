@@ -8,10 +8,8 @@ from copy import deepcopy
 class Trace:
 
 
-	def __init__(self, nagents, n_episodes, n_steps):
+	def __init__(self, nagents, file =None):
 		self.n_agents = nagents
-		self.n_episodes = n_episodes
-		self.n_steps = n_steps
 
 		# ep + iter+ labels + #agents*(rewards, states, actions)
 		self.row_shape = 3 + self.n_agents* 3
@@ -30,6 +28,9 @@ class Trace:
 			self.columns.append(f'available_actions_{i}')
 
 		self.df = pd.DataFrame(columns=self.columns)
+        
+		if file is not None:
+					self.load(file)
 
 
 	def add_episode(self, step, episode, it, rewards, state, actions, labels, labels_seen, available_actions):
@@ -49,7 +50,7 @@ class Trace:
 			ind+=1 
 
 		for i in range(self.n_agents):
-			row[self.columns[ind]] = rewards[i]
+			row[self.columns[ind]] = rewards[i][0]
 			ind +=1
 
 		for i in range(self.n_agents):
@@ -74,4 +75,4 @@ class Trace:
 		self.df.to_csv(file, index=False)
 
 	def load(self, file):
-		self.df = pd.read_csv(file) 
+		self.df = pd.read_csv(file)
