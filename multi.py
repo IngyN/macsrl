@@ -111,6 +111,9 @@ class MultiControlSynthesis:
             epsilon = np.max((1.0*(1 - 1.5*k/K),0.01))
             labels_seen = set()
 
+            if k % (0.1*K) == 0:
+                print(f'episode :{k}')
+
             for t in range(T):
                 # print("state :",state[0], ' - ', state[0][:2], ' - ',  state[0][2:])
                 available_actions = []
@@ -210,7 +213,7 @@ class MultiControlSynthesis:
         
         
         # print((self.nagents,)+self.mdp.shape*self.nagents+(len(self.mdp.A),))
-        Q = np.zeros(shape=(self.nagents,)+self.mdp.shape*self.nagents+(len(self.mdp.A),)) 
+        Q = np.zeros(shape=(self.nagents,)+self.mdp.shape+(len(self.mdp.A),)) 
         print(Q.shape)
         state = np.zeros(shape=(self.nagents,2), dtype=int)
         action = np.zeros(shape=(self.nagents,1), dtype=int)
@@ -243,7 +246,7 @@ class MultiControlSynthesis:
                         self.mdp.running_reward[tuple(state[i])] = 0 # flags can only be collected once
                         ep_returns[k][i] += reward[i]
 
-                elif map == 'bench1':
+                elif map == 'bench1' or map == 'bench2':
                 
                     if ('a' in self.mdp.label[tuple(state[0])] ) and ('b' in self.mdp.label[tuple(state[1])] and (self.mdp.running_reward[tuple(state[0])] != 0) ):
                         reward[0] = 2 ; reward[1]= 2
@@ -258,16 +261,17 @@ class MultiControlSynthesis:
 
                     for i in range(self.nagents):
                         ep_returns[k][i] += reward[i]
+
                 
                 if debug: 
                     print(f' t = {t}, map:{map},  returns:{ep_returns[k].flatten()} , state:{tuple(state.flatten())}, reward:{reward.flatten()}\n', self.mdp.running_reward)
 
                 for i in range(self.nagents):
                     # Follow an epsilon-greedy policy
-                    if np.random.rand() < epsilon or np.max(Q[i][tuple(state.flatten())])==0:
+                    if np.random.rand() < epsilon or np.max(Q[i][tuple(state[i])])==0:
                         action[i] = np.random.choice(len(self.mdp.A))  # Choose among the MDP 
                     else:
-                        action[i] = np.argmax(Q[i][tuple(state.flatten())])
+                        action[i] = np.argmax(Q[i][tuple(state[i])])
 
                     available_actions.append(self.mdp.A)
 
@@ -300,7 +304,7 @@ class MultiControlSynthesis:
 
                 for i in range(self.nagents):
                     # Q-update
-                    Q[i][tuple(state.flatten())][action[i]] += alpha * (reward[i] + gamma[i]*np.max(Q[i][tuple(next_state.flatten())]) - Q[i][tuple(state.flatten())][action[i]])
+                    Q[i][tuple(state[i])][action[i]] += alpha * (reward[i] + gamma[i]*np.max(Q[i][tuple(next_state[i])]) - Q[i][tuple(state[i])][action[i]])
 
                 for i in range(self.nagents):
                     state[i] = deepcopy(next_state[i])

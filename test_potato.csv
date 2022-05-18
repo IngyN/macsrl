@@ -1,0 +1,2 @@
+iteration,episode,step,labels,labels_seen,state_0,state_1,reward_0,reward_1,action_0,action_1,available_actions_0,available_actions_1
+0,0,0,"['a', 'b', 'c']","['a', 'b', 'c', 'd']","[-2, 0]","[3, 4]",3,5,0,2,0,4
