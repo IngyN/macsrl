@@ -1,4 +1,4 @@
-*/.ipynb_checkpoints
+*.ipynb_checkpoints
 *.mp4
 *.hoa
 sharedltl/*
@@ -6,5 +6,6 @@ sharedltl2/*
 sharedoa/*
 sharedoa2/*
 sharedstateoa/*
-
+animation_test/*
+*__pycache__/*
 */__pycache__/*
