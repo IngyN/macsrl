@@ -15,15 +15,15 @@ from matplotlib.offsetbox import TextArea, DrawingArea, OffsetImage, AnnotationB
 
 logger = logging.getLogger(__name__)
 
-colors = mpl.colors.ListedColormap(['#FFFFFF', 'crimson', 'lightskyblue', 'gold', 'violet', 'lightskyblue', 'orange', 'greenyellow'])
+colors = mpl.colors.ListedColormap(['#FFFFFF', 'crimson', 'lightskyblue', 'gold', 'violet', 'lightskyblue', 'orange', 'greenyellow', '#A6A6A6'])
 data_colors = {
-    "TRAP" : 1,
+    "TRAP" : 8,
     "GOAL" : 2,
     "LANDMARK" : 3,
     "ADVBELIEF" : 4,
     "EGOBELIEF" : 5,
-    "ADVGOAL" : 6,
-    "GOALAREA" : 5
+    "ADVGOAL" : 5,
+    "GOALAREA" : 2,
 }
 
 Actions = ['U','D','R','L']  
@@ -55,7 +55,8 @@ class Plotter:
         self._ax_res = None
         self._ax_info = None
         self._init_fig()
-        self._ego_image = None
+        self._ego_image = True
+        self._adv_image = True
         self._title = None
         self.landmark_status = [InteractiveLandmarkStatus.NEGATIVE] * annotation.nr_interactive_landmarks
         self.has_shaping = shaping
@@ -134,9 +135,13 @@ class Plotter:
                             result.append([i,j])
         return result
 
-    def load_ego_image(self, path, zoom=0.2):
+    def load_ego_image(self, path='graph_data/icon_1.png', zoom=0.4):
         img = mpl.image.imread(path)
-        #self._ego_image = OffsetImage(img, zoom=zoom)
+        self._ego_image = OffsetImage(img, zoom=zoom)
+    
+    def load_adv_image(self, path='graph_data/icon_2.png', zoom= 0.4):
+        img = mpl.image.imread(path)
+        self._adv_image = OffsetImage(img, zoom=zoom)
 
     def _clear(self):
         self._data = np.zeros((self._maxX - self._minX + 1, self._maxY - self._minY + 1))
@@ -215,15 +220,24 @@ class Plotter:
 
     def _set_interactive_landmarks(self, xloc, yloc, status, belief, index):
         if status != InteractiveLandmarkStatus.CLEARED:
-            if status == InteractiveLandmarkStatus.POSITIVE:
-                color = 'darkgreen'
-            elif status == InteractiveLandmarkStatus.NEGATIVE:
-                color = 'darkred'
-            
-            adv = patches.RegularPolygon((xloc + 0.5, yloc + 0.5), 7, 0.35, linewidth=1, edgecolor=color, facecolor=color)
+            # if status == InteractiveLandmarkStatus.POSITIVE:
+            #     color = 'green'
+            # if status == InteractiveLandmarkStatus.NEGATIVE:
+            #     color = '#B13030'
+            if index == 0:
+                color = '#99CCFF'
+                edgecolor='b'
+            elif index ==1:
+                color='#FFCE9F'
+                edgecolor='orange'
+            else:
+                color = '#B13030'
+                edgecolor= color
+            # print(f' landmark status: {status}')
+            adv = patches.Circle((xloc + 0.5, yloc + 0.5), 0.35, linewidth=1, edgecolor=edgecolor, facecolor=color)
             props = dict(boxstyle='round', facecolor='yellow', alpha=1)
             propsid = dict(boxstyle='round', facecolor='white', alpha=0.7)
-            text = "?" if belief == InteractiveLandmarkBelief.QUESTIONMARK else "!"
+            text = self._annotation.landmark_label[index]
             self._ax.add_patch(adv)
             txt = self._ax.text(xloc + 0.6, yloc + 0.6, text, fontsize=10,
                                 verticalalignment='top', bbox=props)
@@ -234,15 +248,21 @@ class Plotter:
 
             self._tmp_objects.append(adv)
 
-    def _set_adversary(self, xloc, yloc, adv_direction, radius, q, i=0):
-        if adv_direction is None:
-            adv = patches.Rectangle((xloc + 0.25, yloc + 0.25), 0.5, 0.5, linewidth=1, edgecolor='saddlebrown', facecolor='sienna')
+    def _set_adversary(self, ax, xloc, yloc, adv_direction, radius, q, i=0, load_img=True):
+        if load_img:
+            self.load_adv_image()
+            adv = AnnotationBbox(self._adv_image, (xloc+0.5, yloc+0.5), pad=0.0, frameon=False)
+            ax.add_artist(adv)
+        elif adv_direction is None:
+            adv = patches.Rectangle((xloc + 0.25, yloc + 0.25), 0.5, 0.5, linewidth=1, edgecolor='#E43F3F', facecolor='#FFCE9F')
+            self._ax.add_patch(adv)
+            self._tmp_objects.append(adv)
         else:
-            adv = patches.RegularPolygon((xloc+0.5, yloc+0.5), 3, 0.35, linewidth=1, edgecolor='saddlebrown', facecolor='sienna')
+            adv = patches.RegularPolygon((xloc+0.5, yloc+0.5), 3, 0.35, linewidth=1, edgecolor='saddlebrown', facecolor='#FFCE9F')
             t2 = mpl.transforms.Affine2D().rotate_around(xloc+0.5, yloc+0.5, np.deg2rad(adv_direction.rotation)) + self._ax.transData
             adv.set_transform(t2)
-        self._ax.add_patch(adv)
-        self._tmp_objects.append(adv)
+            self._ax.add_patch(adv)
+            self._tmp_objects.append(adv)
 
         if radius:
             viewarea_xlb = max(0, xloc - radius)
@@ -252,6 +272,8 @@ class Plotter:
             viewarea = patches.Rectangle((viewarea_xlb, viewarea_ylb), viewarea_xub-viewarea_xlb+1, viewarea_yub-viewarea_ylb+1, linewidth=0.4, edgecolor='r', facecolor='r', alpha=0.1, hatch='x' )
             self._ax.add_patch(viewarea)
             self._tmp_objects.append(viewarea)
+        
+        self._tmp_objects.append(adv)
 
         props = dict(boxstyle='round', facecolor='lavender', alpha=0.5)
         if adv_direction is None:
@@ -265,10 +287,11 @@ class Plotter:
     def _set_ego(self, ax, xloc, yloc, q, radius):
         # Create a Rectangle patch
         if self._ego_image:
-            ego = AnnotationBbox(self._ego_image, (xloc+0.5, yloc+0.5))
+            self.load_ego_image()
+            ego = AnnotationBbox(self._ego_image, (xloc+0.5, yloc+0.5), pad=0.0, frameon=False)
             ax.add_artist(ego)
         else:
-            ego = patches.Rectangle((xloc+0.25, yloc+0.25), 0.5, 0.5, linewidth=1, edgecolor='b', facecolor='b')
+            ego = patches.Rectangle((xloc+0.25, yloc+0.25), 0.5, 0.5, linewidth=1, edgecolor='b', facecolor='#99CCFF')
             ax.add_patch(ego)
 
         if radius:
@@ -386,7 +409,7 @@ class Plotter:
                 dx = 0.6
                 dy = 0
             
-            arr = self._ax.arrow(xloc+0.5, yloc+0.5, dx, dy, head_width=0.12, ec=ecol, fc=fcol, lw=0.01)
+            arr = self._ax.arrow(xloc+0.5, yloc+0.5, dx, dy, head_width=0.12, ec=ecol, fc=fcol, lw=0.04)
             self._tmp_objects.append(arr)
 
     def _set_actions(self, state, xloc, yloc, available, selected, debug=False):
@@ -461,7 +484,7 @@ class Plotter:
                 dx = 0.6
                 dy = 0
             
-            arr = self._ax.arrow(xloc+0.5, yloc+0.5, dx, dy, head_width=0.12, ec=ecol, fc=fcol, lw=0.01)
+            arr = self._ax.arrow(xloc+0.5, yloc+0.5, dx, dy, head_width=0.12, ec=ecol, fc=fcol, lw=0.04)
             self._tmp_objects.append(arr)
 
     def _get_ego_loc(self, state):
@@ -553,7 +576,8 @@ class Plotter:
             print(snapshot)
         ego_xloc, ego_yloc = self._get_ego_loc(snapshot['state_0'])
         ego_radius = self._get_ego_radius()
-
+        
+        # print(snapshot['state_0'],snapshot['action_0'],snapshot['action_0'][0])
         if  self._get_action_string(snapshot['state_0'], snapshot['action_0'][0]) is not None and self._get_action_string(snapshot['state_0'], snapshot['action_0'][0]) == self._annotation.scan_action:
             self._ego_scanned_last_round = True
         else:
@@ -589,9 +613,9 @@ class Plotter:
             adv_radius = self._get_adv_radius()
             
             if self.has_shaping:
-                self._set_adversary(adv_xloc, adv_yloc, adv_direction, adv_radius, snapshot[f'state_{i+1}'][1], i)
+                self._set_adversary(ax, adv_xloc, adv_yloc, adv_direction, adv_radius, snapshot[f'state_{i+1}'][1], i)
             else:
-                self._set_adversary(adv_xloc, adv_yloc, adv_direction, adv_radius, 'n/a', i)
+                self._set_adversary(ax, adv_xloc, adv_yloc, adv_direction, adv_radius, 'n/a', i)
             
             self._set_adv_actions(snapshot[f'state_{i+1}'],adv_xloc, adv_yloc, snapshot[f'available_actions_{i+1}'], snapshot[f'action_{i+1}'][0], debug=debug)
             if hasattr(snapshot, 'potential_states'):
