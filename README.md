@@ -1,6 +1,6 @@
 # Logic Based Reward Shaping for Multi-agent Reinforcement Learning (MARL)
 
-This repository contains the implementation of the project described in this [document]().
+This repository contains the implementation of the project described in this [document](http://arxiv.org/abs/2206.08881).
 
 This repository also includes the implementation of the learning-based synthesis algorithm described in this [article](https://arxiv.org/abs/1909.07299) which was developed by Alper Kamil Bozkurt from this [repository](https://github.com/alperkamil/csrl.git).
 
